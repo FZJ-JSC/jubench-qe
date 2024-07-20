@@ -1,5 +1,6 @@
-ngpu,Wall_Clock_Time
-4,227.25
-8,155.47
-16,101.65
-32,78.6
+nodes,ngpu,Wall_Clock_Time,verified
+4,16,103.6,true
+6,24,98.54,true
+8,32,81.88,true
+12,48,75.1,true
+16,64,72.1,true
