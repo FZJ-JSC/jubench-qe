@@ -6,3 +6,5 @@ This benchmark is part of the [JUPITER Benchmark Suite](https://github.com/FZJ-J
 
 This repository contains the Quantum ESPRESSO (GPU) benchmark. [`DESCRIPTION.md`](DESCRIPTION.md) contains details for compilation, execution, and evaluation.  
 The input file is taken from [MaX project](https://gitlab.com/max-centre/benchmarks/-/tree/master/Quantum_Espresso/CP/ZrO2/supercell_11layer).
+
+The source code of Quantum ESPRESSO is included in the `./src/` subdirectory as a submodule from the ICON repository at [gitlab.com/QEF/q-e.git](https://gitlab.com/QEF/q-e.git).
