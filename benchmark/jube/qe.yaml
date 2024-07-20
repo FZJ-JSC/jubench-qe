@@ -1,0 +1,105 @@
+name: QE_benchmark
+outpath: bench_run
+comment: JSC QE benchmark. Input and ECP files acquired from MaX project's [public repository](https://gitlab.com/max-centre/benchmarks/-/blob/master/Quantum_Espresso/CP/ZrO2/supercell_11layer)
+
+#Configuration
+parameterset:
+  - name: systemParameter
+    init_with: platform.xml
+    parameter:
+      - {name: account, type: string, _: jscbenchmark} #  Slurm account
+      - {name: mail, type: string, _: ""} # Email Address for Slurm
+      - {name: queue, type: string, _: booster} # Slurm partition
+      - {name: taskspernode, type: int, _: "4"}  # Number of MPI tasks per node
+      - {name: gres, type: string, _: "gpu:$taskspernode"} # Number of GPUs
+      - {name: nodes, type: int, _: "8"}  # Total number of nodes
+      - {name: ngpu, type: int, mode: python, _: $taskspernode * $nodes}
+      - {name: nbgrp, type: int, mode: python, _: 2**int(($nodes/8))}
+      - {name: threadspertask, type: int, _: "6"}
+      - {name: executable, type: string, _: "$jube_benchmark_home/../../src/QE/bin/cp.x"}
+      - {name: args_exec, type: string, _: "-ndiag 25 -nbgrp $nbgrp  < zro2.in > zro2.out"} # see https://people.sissa.it/~degironc/FIST/Slides/6%20parallalization.pdf for more info
+      - {name: preprocess, type: string, _: "module load $MODULE_LIST"}
+      - {name: postprocess, type: string, _: 'if grep -Fq "total energy =    -5457.2649559" zro2.out; then echo "Benchmark verified!" && echo "verified = true" >>zro2.out ; else echo "Benchmark is not verified check the zro2.out!" && echo "verified = false" >>zro2.out  && exit 1; fi '} # for verification
+      
+  - name: config_parameters
+    parameter:
+      - {name: QESRCPATH, export: true, _: "$jube_benchmark_home/../../src/q-e"}  
+      - {name: QEINSPATH, export: true, _: "$jube_benchmark_home/../../src/QE"}  # QE installation PATH
+      - {name: BENCHROOT, export: true, _: "$jube_benchmark_home/../../"} # benchmark's root folder (no need to change this!) 
+      - {name: MODULE_LIST, export: true, "_": "Stages/2024 NVHPC/24.3-CUDA-12 ParaStationMPI/5.9.2-1 FFTW/3.3.10 AOCC/4.0.0 CMake "}
+      - {name: CONFOPTIONS, export: true, "_": "-DQE_ENABLE_MPI=ON -DQE_ENABLE_CUDA=ON -DQE_ENABLE_OPENACC=ON -DCMAKE_C_COMPILER=mpicc -DCMAKE_Fortran_COMPILER=mpif90 -DCMAKE_Fortran_FLAGS=-D__CLOCK_SECONDS -DBLA_VENDOR=NVHPC -DQE_ENABLE_MPI_GPU_AWARE=ON"}
+      - {name: FORCEBUILD, _: "FALSE"} # Force build option can be TRUE or FALSE
+      # see https://gitlab.com/QEF/q-e/-/wikis/Developers/CMake-build-system and https://gitlab.com/QEF/q-e/-/wikis/Developers/CMake-build-system for details about CMake options.
+
+# No need to change anything after here!
+  - name: executeset
+    init_with: platform.xml
+    parameter:
+      - {name: args_starter, type: string, _: "--accel-bind=g --cpu-bind=cores --threads-per-core=1 --cpus-per-task=$threadspertask "}
+      - {name: ready_file, "_": ready}
+
+
+patternset:
+  name: pattern
+  pattern: 
+      - {name: Wall_Clock_Time, type: float, _: 'CP\s+:\s+\d+.\d+s\sCPU\s+ $jube_pat_fp'} 
+      - {name: verified, type: string, _: "verified = $jube_pat_wrd"}
+substituteset:              
+     - name: input_subs
+       iofile: {in: $jube_benchmark_home/../../src/inputs/zro2.in, out: zro2.in}
+       sub:
+       - {source: "#JUBEBENCHHOME#", dest: $jube_benchmark_home/../..}
+
+# Operations
+step:
+
+  - name: config
+    export: true
+    use: 
+      - config_parameters #use existing parameter
+    do:
+     - module load $MODULE_LIST
+     - cd $BENCHROOT && if [ $FORCEBUILD == "TRUE" ];then rm -rf $QESRCPATH/build $QEINSPATH; fi # removes build folder if  FORCEBUILD = TRUE 
+     - mkdir -p $QESRCPATH/build
+     - cd $QESRCPATH/build && if [ $FORCEBUILD == "TRUE" ] || [ ! -f "$QEINSPATH/bin/cp.x" ];then cmake ../ -DCMAKE_INSTALL_PREFIX=$QEINSPATH $CONFOPTIONS  2>&1 | tee  cmake-conf.log; fi
+
+# Build 
+  - name: compile
+    depend: config
+    export: true
+    use: 
+      - config_parameters
+    do: cd $QESRCPATH/build && if [ $FORCEBUILD == "TRUE" ] || [ ! -f "$QEINSPATH/bin/cp.x" ]; then make cp -j16 install &> make.log; fi
+
+# Submit
+  - name: submit
+    depend: compile
+    use: 
+      - config_parameters, systemParameter
+      - input_subs
+      - executeset
+      - from: platform.xml
+        _: jobfiles
+      - from: platform.xml
+        _: executesub
+
+    do:
+      done_file: $ready_file 
+      _: $submit $submit_script
+
+# Analyse
+analyser:
+  name: analyse
+  use: pattern # use existing patternset
+  analyse:
+    step: submit
+    file: zro2.out # file which should be scanned
+
+# Create result table
+result:
+  use: analyse #use existing analyser
+  table:
+    name: result
+    style: csv
+    sort: number
+    column: [nodes,ngpu,Wall_Clock_Time,verified]

@@ -1,0 +1,12 @@
+*.sha256
+qe-gpu-bench.tar.gz
+*.log
+*.LOG
+*.vscode
+*.o
+*.mod
+.ipynb_checkpoints
+*.qdrep
+*.sqlite
+*.ncu-rep
+
